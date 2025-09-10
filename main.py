@@ -34,16 +34,27 @@ all_commands = {"groups": {}, "users": {}}
 
 PREMADE_COMMANDS = {
     "start": "Shows this help message.",
+
     "new": "Create a new custom command for this chat.",
+
     "commandlist": "Lists all available commands for this chat.",
+
     "deleteall": "Delete all custom commands from this chat.",
+
     "userinfo": "<user_id> - Get info about a user.",
+
     "removeuser": "<user_id> - Kick a user (they can rejoin).",
+
     "ban": "<user_id> [reason] - Ban a user permanently.",
+
     "unban": "<user_id> - Unban a user.",
+
     "mute": "<user_id> <5m|1h|2d> - Mute a user for a duration.",
+
     "unmute": "<user_id> - Unmute a user.",
+
     "pin": "Reply to a message to pin it.",
+
     "invitelink": "Get a new invite link for this chat.",
 }
 
