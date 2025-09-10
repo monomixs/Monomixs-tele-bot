@@ -5,10 +5,10 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, filters,
     ContextTypes, ConversationHandler
 )
-from google.genai import ChatModel, InputText
+from google import genai
 from dotenv import load_dotenv
 
-# Load .env if running locally (optional)
+# Load .env if running locally
 load_dotenv()
 
 # ===== Environment Variables =====
@@ -21,7 +21,7 @@ if not GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY environment variable not set!")
 
 # ===== Admin Settings =====
-ADMINS = [123456789]  # Replace with your Telegram user ID
+ADMINS = [123456789]  # Replace with your Telegram ID
 
 # ===== Conversation States =====
 WAITING_FOR_COMMAND, WAITING_FOR_RESPONSE = range(2)
@@ -34,8 +34,8 @@ try:
 except FileNotFoundError:
     user_commands = {}
 
-# ===== Gemini AI Setup =====
-chat_model = ChatModel(api_key=GEMINI_API_KEY)
+# ===== Gemini AI Client =====
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 # ===== Helper Functions =====
 def admin_only(func):
@@ -137,8 +137,10 @@ async def gemini(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Please ask a question after /gemini")
         return
     try:
-        input_text = InputText(text=question)
-        response = chat_model.chat(input_text=input_text)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",  # Adjust if a different model is available
+            contents=question
+        )
         await update.message.reply_text(response.text)
     except Exception as e:
         await update.message.reply_text(f"Error contacting Gemini: {e}")
