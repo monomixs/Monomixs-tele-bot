@@ -53,11 +53,6 @@ CONFIRM_DELETE = range(1)
 
 # --- Helper Functions ---
 
-def escape_markdown_v2(text: str) -> str:
-    """Escapes characters for Telegram's MarkdownV2 parse mode."""
-    escape_chars = r'_*[]()~`>#+-=|{}.!'
-    return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
-
 def load_user_commands():
     """Loads custom commands and cleans up any conflicts with premade commands."""
     global user_commands
@@ -98,7 +93,7 @@ def parse_duration(duration_str: str) -> datetime.timedelta:
 # --- Core Bot Command Handlers ---
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Sends a detailed welcome and help message."""
+    """Sends a detailed welcome and help message using plain text."""
     message = "Hello! I'm your friendly bot. Here's a list of my built-in commands:\n\n"
     for command, description in PREMADE_COMMANDS.items():
         message += f"/{command} {description}\n"
@@ -106,20 +101,19 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await update.message.reply_text(message)
 
 async def command_list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Displays a unified list of all commands."""
-    message = "*Built-in Commands*\n"
+    """Displays a unified list of all commands using plain text for reliability."""
+    message = "--- Built-in Commands ---\n"
     for command, description in PREMADE_COMMANDS.items():
-        escaped_desc = escape_markdown_v2(description)
-        message += f"• `/{command}` \- {escaped_desc}\n"
+        message += f"/{command} - {description}\n"
     
-    message += "\n*Your Custom Commands*\n"
+    message += "\n--- Your Custom Commands ---\n"
     if not user_commands:
-        message += "_You haven't created any custom commands yet\. Use /new to create one\!_"
+        message += "You haven't created any custom commands yet. Use /new to create one!"
     else:
         for command in sorted(user_commands.keys()):
-            message += f"• `/{command}`\n"
+            message += f"/{command}\n"
             
-    await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN_V2)
+    await update.message.reply_text(message) # No parse_mode, for maximum reliability
 
 # --- Custom Command Management ---
 
@@ -194,19 +188,15 @@ async def user_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         user_id = int(context.args[0])
         user = await context.bot.get_chat(user_id)
         
-        # Escape potential markdown characters in user-provided names
-        first_name = escape_markdown_v2(user.first_name)
-        last_name = escape_markdown_v2(user.last_name or 'N/A')
-        username = escape_markdown_v2(user.username or 'N/A')
-
+        # Plain text for maximum reliability
         message = (
-            f"*User Info*:\n"
-            f"ID: `{user.id}`\n"
-            f"First Name: {first_name}\n"
-            f"Last Name: {last_name}\n"
-            f"Username: @{username}"
+            f"User Info:\n"
+            f"ID: {user.id}\n"
+            f"First Name: {user.first_name}\n"
+            f"Last Name: {user.last_name or 'N/A'}\n"
+            f"Username: @{user.username or 'N/A'}"
         )
-        await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN_V2)
+        await update.message.reply_text(message)
     except Exception:
         await update.message.reply_text(f"Could not find user with ID: {context.args[0]}.")
 
@@ -242,7 +232,7 @@ async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
     try:
         user_id = int(context.args[0])
-        await context.bot.unban_chat_member(chat_id=update.effective_chat.id, user_id=user_id)
+        await context.bot.unban_chat_member(chat_id=update.effective_cat.id, user_id=user_id)
         await update.message.reply_text(f"Unbanned user {user_id}.")
     except Exception as e:
         logger.error(f"Error in /unban: {e}")
