@@ -4,7 +4,6 @@ import json
 import re
 from dotenv import load_dotenv
 
-import google.generativeai as genai
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -26,22 +25,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Get API keys from environment variables
+# Get API key from environment variables
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-if not BOT_TOKEN or not GEMINI_API_KEY:
-    raise ValueError("BOT_TOKEN and GEMINI_API_KEY environment variables are required.")
-
-# Configure the Gemini AI
-genai.configure(api_key=GEMINI_API_KEY)
-gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN environment variable is required.")
 
 # --- Globals & Data Persistence ---
 COMMAND_FILE = "user_commands.json"
 
-# In-memory storage for AI chat history {chat_id: [history]}
-gemini_memory = {}
 # In-memory storage for custom commands {command_name: reply_text}
 user_commands = {}
 
@@ -69,92 +61,18 @@ def save_user_commands():
     with open(COMMAND_FILE, "w") as f:
         json.dump(user_commands, f, indent=4)
 
-async def split_and_send_message(update: Update, text: str, parse_mode: str = None):
-    """Splits a long message into multiple parts and sends them."""
-    MAX_LENGTH = 4096
-    if len(text) <= MAX_LENGTH:
-        try:
-            await update.message.reply_text(text, parse_mode=parse_mode)
-        except Exception as e:
-            logger.warning(f"Failed to send with parse_mode={parse_mode}: {e}. Sending as plain text.")
-            await update.message.reply_text(text)
-        return
-
-    parts = []
-    while len(text) > 0:
-        if len(text) > MAX_LENGTH:
-            part = text[:MAX_LENGTH]
-            # Try to find a good split point (newline, then space)
-            last_newline = part.rfind('\n')
-            last_space = part.rfind(' ')
-            if last_newline > 0:
-                split_at = last_newline
-            elif last_space > 0:
-                split_at = last_space
-            else:
-                split_at = MAX_LENGTH
-
-            parts.append(text[:split_at])
-            text = text[split_at:].lstrip()
-        else:
-            parts.append(text)
-            break
-
-    for part in parts:
-        try:
-            await update.message.reply_text(part, parse_mode=parse_mode)
-        except Exception as e:
-            logger.warning(f"Failed to send part with parse_mode={parse_mode}: {e}. Sending as plain text.")
-            await update.message.reply_text(part)
-
 # --- Core Bot Command Handlers ---
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Sends a welcome message when the /start command is issued."""
     await update.message.reply_text(
-        "Hello! I'm a bot powered by Google Gemini.\n\n"
-        "Here are some commands you can use:\n"
-        "/gemini <text> - Chat with the AI.\n"
-        "/new_gemini - Start a new AI conversation.\n"
+        "Hello! I'm a custom command bot.\n\n"
+        "Here are the available commands:\n"
         "/new - Create a new custom command.\n"
         "/commandlist - View all custom commands.\n"
         "/userinfo <user_id> - Get info about a user.\n"
         "/removeuser <user_id> - Remove a user from the chat."
     )
-
-async def gemini_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handles the /gemini command to chat with the AI."""
-    chat_id = update.effective_chat.id
-    user_text = " ".join(context.args)
-
-    if not user_text:
-        await update.message.reply_text("Please provide some text after the /gemini command.")
-        return
-
-    # Initialize memory for the chat if it doesn't exist
-    if chat_id not in gemini_memory:
-        gemini_memory[chat_id] = gemini_model.start_chat(history=[])
-
-    try:
-        # Show a "thinking..." message
-        thinking_message = await update.message.reply_text("🤔 Thinking...")
-
-        response = gemini_memory[chat_id].send_message(user_text)
-
-        # Edit the message to show the final response
-        await context.bot.delete_message(chat_id=chat_id, message_id=thinking_message.message_id)
-        await split_and_send_message(update, response.text, parse_mode=ParseMode.MARKDOWN)
-
-    except Exception as e:
-        logger.error(f"Error calling Gemini API: {e}")
-        await update.message.reply_text("Sorry, I encountered an error while talking to the AI.")
-
-async def new_gemini_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Resets the Gemini AI conversation history for the chat."""
-    chat_id = update.effective_chat.id
-    if chat_id in gemini_memory:
-        del gemini_memory[chat_id]
-    await update.message.reply_text("🤖 AI memory for this chat has been reset. Let's start a new conversation!")
 
 # --- Custom Command Management ---
 
@@ -256,8 +174,6 @@ async def user_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 async def remove_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Removes a user from the chat. Bot must be an admin."""
-    # NOTE: Making this command public is risky in a group with multiple members.
-    # The bot must have "Ban users" permission to execute this.
     chat_id = update.effective_chat.id
 
     if not context.args:
@@ -300,8 +216,6 @@ def main() -> None:
 
     # Standard command handlers
     application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("gemini", gemini_command))
-    application.add_handler(CommandHandler("new_gemini", new_gemini_command))
     application.add_handler(CommandHandler("commandlist", command_list_command))
     application.add_handler(CommandHandler("userinfo", user_info_command))
     application.add_handler(CommandHandler("removeuser", remove_user_command))
