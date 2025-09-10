@@ -28,7 +28,9 @@ if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN environment variable is required.")
 
 # --- Globals & Data Persistence ---
-COMMAND_FILE = "user_commands.json"
+# MODIFIED LINE: Use an absolute path to ensure it writes to the persistent volume
+COMMAND_FILE = "/app/user_commands.json" 
+
 # New structure to hold commands scoped to groups and users
 all_commands = {"groups": {}, "users": {}}
 
@@ -218,7 +220,7 @@ async def delete_all_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("Deletion canceled.")
     return ConversationHandler.END
 
-# --- User Management & Moderator Commands (RESTORED) ---
+# --- User Management & Moderator Commands ---
 
 async def user_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args: await update.message.reply_text("Usage: /userinfo <user_id>"); return
@@ -306,11 +308,9 @@ def main() -> None:
         fallbacks=[CommandHandler("cancel", cancel)],
     )
     
-    # Add conversation handlers first
     application.add_handler(new_command_conv)
     application.add_handler(delete_all_conv)
 
-    # Add handlers for all premade commands
     command_handlers = {
         "start": start_command, "commandlist": command_list_command, "userinfo": user_info_command,
         "removeuser": remove_user_command, "ban": ban_command, "unban": unban_command,
@@ -319,7 +319,6 @@ def main() -> None:
     for command, handler_func in command_handlers.items():
         application.add_handler(CommandHandler(command, handler_func))
 
-    # Add the single, smart handler for all custom commands.
     application.add_handler(MessageHandler(filters.COMMAND & (~filters.UpdateType.EDITED), handle_custom_command), group=1)
 
     logger.info("Bot is starting...")
