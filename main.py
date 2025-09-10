@@ -5,13 +5,12 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, filters,
     ContextTypes, ConversationHandler
 )
+from telegram.constants import ParseMode
 from google import genai
 from dotenv import load_dotenv
 
-# Load .env if running locally
+# ===== Load Environment =====
 load_dotenv()
-
-# ===== Environment Variables =====
 TOKEN = os.getenv("BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
@@ -20,13 +19,10 @@ if not TOKEN:
 if not GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY environment variable not set!")
 
-# ===== Admin Settings =====
-ADMINS = [123456789]  # Replace with your Telegram ID
-
 # ===== Conversation States =====
 WAITING_FOR_COMMAND, WAITING_FOR_RESPONSE = range(2)
 
-# ===== Load or Initialize Commands File =====
+# ===== User commands storage =====
 COMMANDS_FILE = "user_commands.json"
 try:
     with open(COMMANDS_FILE, "r") as f:
@@ -34,26 +30,16 @@ try:
 except FileNotFoundError:
     user_commands = {}
 
-# ===== Gemini AI Client =====
+# ===== Gemini Client & Memory =====
 client = genai.Client(api_key=GEMINI_API_KEY)
+gemini_memory = {}  # chat_id -> list of messages
 
 # ===== Helper Functions =====
-def admin_only(func):
-    """Decorator to restrict admin commands."""
-    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if update.effective_user.id not in ADMINS:
-            await update.message.reply_text("❌ You are not allowed to use this command.")
-            return
-        return await func(update, context)
-    return wrapper
-
 def save_commands():
-    """Save commands to file."""
     with open(COMMANDS_FILE, "w") as f:
         json.dump(user_commands, f, indent=4)
 
 def load_saved_commands(application):
-    """Load previously saved commands dynamically."""
     for cmd, reply in user_commands.items():
         async def dynamic_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, reply_text=reply):
             await update.message.reply_text(reply_text)
@@ -79,11 +65,9 @@ async def receive_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     response_text = update.message.text
     command_name = context.user_data["new_command_name"]
 
-    # Save command
     user_commands[command_name] = response_text
     save_commands()
 
-    # Add handler dynamically
     async def dynamic_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, reply_text=response_text):
         await update.message.reply_text(reply_text)
 
@@ -95,8 +79,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Command creation cancelled.")
     return ConversationHandler.END
 
-# ===== Admin Commands =====
-@admin_only
+# ===== Previously “Admin” Commands (Now Public) =====
 async def command_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user_commands:
         await update.message.reply_text("No commands saved yet.")
@@ -104,7 +87,6 @@ async def command_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cmds = "\n".join(user_commands.keys())
     await update.message.reply_text(f"Saved commands:\n{cmds}")
 
-@admin_only
 async def remove_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Usage: /removeuser <user_id>")
@@ -116,7 +98,6 @@ async def remove_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"Failed to remove user: {e}")
 
-@admin_only
 async def user_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Usage: /userinfo <user_id>")
@@ -130,26 +111,46 @@ async def user_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"Failed to get user info: {e}")
 
-# ===== /gemini AI Command =====
+# ===== /gemini AI Command with Memory & Markdown =====
 async def gemini(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
     question = " ".join(context.args)
     if not question:
-        await update.message.reply_text("Please ask a question after /gemini")
+        await update.message.reply_text("Please ask something after /gemini")
         return
+
+    if chat_id not in gemini_memory:
+        gemini_memory[chat_id] = []
+
+    gemini_memory[chat_id].append({"role": "user", "content": question})
+
+    memory_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in gemini_memory[chat_id]])
+    prompt = f"{memory_text}\nassistant:"
+
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-flash",  # Adjust if a different model is available
-            contents=question
+            model="gemini-2.5-flash",
+            contents=prompt
         )
-        await update.message.reply_text(response.text)
+        gemini_memory[chat_id].append({"role": "assistant", "content": response.text})
+        await update.message.reply_text(
+            response.text,
+            parse_mode=ParseMode.MARKDOWN
+        )
     except Exception as e:
         await update.message.reply_text(f"Error contacting Gemini: {e}")
+
+# ===== /new-gemini Command to Reset Memory =====
+async def new_gemini(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    gemini_memory[chat_id] = []
+    await update.message.reply_text("Gemini memory has been reset. Starting a new chat.")
 
 # ===== Main Bot Setup =====
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # Dynamic user commands
+    # /new command conversation
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("new", new_command_start)],
         states={
@@ -160,15 +161,16 @@ def main():
     )
     app.add_handler(conv_handler)
 
-    # Admin commands
+    # Public “admin” commands
     app.add_handler(CommandHandler("commandlist", command_list))
     app.add_handler(CommandHandler("removeuser", remove_user))
     app.add_handler(CommandHandler("userinfo", user_info))
 
-    # AI command
+    # Gemini AI commands
     app.add_handler(CommandHandler("gemini", gemini))
+    app.add_handler(CommandHandler("new-gemini", new_gemini))
 
-    # Load saved commands
+    # Load saved user commands
     load_saved_commands(app)
 
     print("Bot is running...")
