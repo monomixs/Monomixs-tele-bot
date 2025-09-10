@@ -79,7 +79,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Command creation cancelled.")
     return ConversationHandler.END
 
-# ===== Previously “Admin” Commands (Now Public) =====
+# ===== Public “Admin” Commands =====
 async def command_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user_commands:
         await update.message.reply_text("No commands saved yet.")
@@ -140,7 +140,7 @@ async def gemini(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"Error contacting Gemini: {e}")
 
-# ===== /new-gemini Command to Reset Memory =====
+# ===== /new_gemini Command to Reset Memory =====
 async def new_gemini(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     gemini_memory[chat_id] = []
@@ -161,14 +161,14 @@ def main():
     )
     app.add_handler(conv_handler)
 
-    # Public “admin” commands
+    # Public commands
     app.add_handler(CommandHandler("commandlist", command_list))
     app.add_handler(CommandHandler("removeuser", remove_user))
     app.add_handler(CommandHandler("userinfo", user_info))
 
     # Gemini AI commands
     app.add_handler(CommandHandler("gemini", gemini))
-    app.add_handler(CommandHandler("new-gemini", new_gemini))
+    app.add_handler(CommandHandler("new_gemini", new_gemini))
 
     # Load saved user commands
     load_saved_commands(app)
