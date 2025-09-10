@@ -86,8 +86,8 @@ def parse_duration(duration_str: str) -> datetime.timedelta:
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = "Hello! I'm your friendly bot. Here's a list of my built-in commands:\n\n"
     for command, description in PREMADE_COMMANDS.items():
-        message += f"/{command} - {description}\n\n"  # <-- double newline for spacing
-    message += "Custom commands are specific to each chat. Use /commandlist to see them."
+        message += f"/{command} {description}\n"
+    message += "\nCustom commands are specific to each chat. Use /commandlist to see them."
     await update.message.reply_text(message)
 
 async def command_list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -95,11 +95,11 @@ async def command_list_command(update: Update, context: ContextTypes.DEFAULT_TYP
     chat_id = str(update.effective_chat.id)
     chat_type = update.effective_chat.type
 
-    message = "--- Built-in Commands ---\n\n"
+    message = "--- Built-in Commands ---\n"
     for command, description in PREMADE_COMMANDS.items():
-        message += f"/{command} - {description}\n\n"  # <-- double newline
-
-    message += "--- Custom Commands for this Chat ---\n\n"
+        message += f"/{command} - {description}\n"
+    
+    message += "\n--- Custom Commands for this Chat ---\n"
     
     custom_commands_for_chat = {}
     if chat_type in ["group", "supergroup"]:
@@ -111,7 +111,7 @@ async def command_list_command(update: Update, context: ContextTypes.DEFAULT_TYP
         message += "There are no custom commands for this chat yet. Use /new to create one!"
     else:
         for command in sorted(custom_commands_for_chat.keys()):
-            message += f"/{command}\n\n"  # <-- double newline for spacing
+            message += f"/{command}\n"
             
     await update.message.reply_text(message)
 
@@ -176,6 +176,8 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 async def handle_custom_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """A single handler to process all potential custom commands based on context."""
+    if not update.message or not update.message.text: return
     command = update.message.text[1:].split('@')[0].lower()
     chat_id = str(update.effective_chat.id)
     chat_type = update.effective_chat.type
@@ -194,6 +196,7 @@ async def delete_all_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     return CONFIRM_DELETE
 
 async def delete_all_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Deletes all commands for the specific chat context."""
     if update.message.text.lower() == 'yes':
         chat_id = str(update.effective_chat.id)
         chat_type = update.effective_chat.type
@@ -215,12 +218,79 @@ async def delete_all_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("Deletion canceled.")
     return ConversationHandler.END
 
-# --- User Management & Moderator Commands (unchanged) ---
-# [Keep all your existing user/moderator commands here without change]
+# --- User Management & Moderator Commands (RESTORED) ---
+
+async def user_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.args: await update.message.reply_text("Usage: /userinfo <user_id>"); return
+    try:
+        user_id = int(context.args[0])
+        user = await context.bot.get_chat(user_id)
+        message = f"User Info:\nID: {user.id}\nFirst Name: {user.first_name}\nLast Name: {user.last_name or 'N/A'}\nUsername: @{user.username or 'N/A'}"
+        await update.message.reply_text(message)
+    except Exception: await update.message.reply_text(f"Could not find user with ID: {context.args[0]}.")
+
+async def remove_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.args: await update.message.reply_text("Usage: /removeuser <user_id>"); return
+    try:
+        user_id = int(context.args[0])
+        await context.bot.ban_chat_member(chat_id=update.effective_chat.id, user_id=user_id)
+        await context.bot.unban_chat_member(chat_id=update.effective_chat.id, user_id=user_id)
+        await update.message.reply_text(f"User {user_id} has been removed.")
+    except Exception as e: logger.error(f"Error in /removeuser: {e}"); await update.message.reply_text("Failed. Do I have admin rights?")
+
+async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.args: await update.message.reply_text("Usage: /ban <user_id> [reason]"); return
+    try:
+        user_id = int(context.args[0])
+        reason = " ".join(context.args[1:]) or "No reason."
+        await context.bot.ban_chat_member(chat_id=update.effective_chat.id, user_id=user_id)
+        await update.message.reply_text(f"Banned user {user_id}. Reason: {reason}")
+    except Exception as e: logger.error(f"Error in /ban: {e}"); await update.message.reply_text("Failed. Do I have admin rights?")
+
+async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.args: await update.message.reply_text("Usage: /unban <user_id>"); return
+    try:
+        user_id = int(context.args[0])
+        await context.bot.unban_chat_member(chat_id=update.effective_chat.id, user_id=user_id)
+        await update.message.reply_text(f"Unbanned user {user_id}.")
+    except Exception as e: logger.error(f"Error in /unban: {e}"); await update.message.reply_text("Failed. Do I have admin rights?")
+
+async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if len(context.args) != 2: await update.message.reply_text("Usage: /mute <user_id> <5m|1h|2d>"); return
+    try:
+        user_id = int(context.args[0])
+        duration = parse_duration(context.args[1])
+        until_date = datetime.datetime.now(datetime.timezone.utc) + duration
+        permissions = ChatPermissions(can_send_messages=False)
+        await context.bot.restrict_chat_member(chat_id=update.effective_chat.id, user_id=user_id, permissions=permissions, until_date=until_date)
+        await update.message.reply_text(f"Muted user {user_id} for {context.args[1]}.")
+    except ValueError as e: await update.message.reply_text(f"Error: {e}")
+    except Exception as e: logger.error(f"Error in /mute: {e}"); await update.message.reply_text("Failed. Do I have admin rights?")
+
+async def unmute_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.args: await update.message.reply_text("Usage: /unmute <user_id>"); return
+    try:
+        user_id = int(context.args[0])
+        permissions = ChatPermissions(can_send_messages=True, can_send_media_messages=True, can_send_polls=True, can_send_other_messages=True, can_add_web_page_previews=True)
+        await context.bot.restrict_chat_member(chat_id=update.effective_chat.id, user_id=user_id, permissions=permissions)
+        await update.message.reply_text(f"Unmuted user {user_id}.")
+    except Exception as e: logger.error(f"Error in /unmute: {e}"); await update.message.reply_text("Failed. Do I have admin rights?")
+
+async def pin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message.reply_to_message: await update.message.reply_text("Reply to a message with /pin to pin it."); return
+    try: await context.bot.pin_chat_message(chat_id=update.effective_chat.id, message_id=update.message.reply_to_message.message_id)
+    except Exception as e: logger.error(f"Error in /pin: {e}"); await update.message.reply_text("Failed. Do I have admin rights?")
+
+async def invitelink_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        link = await context.bot.export_chat_invite_link(chat_id=update.effective_chat.id)
+        await update.message.reply_text(f"New invite link: {link}")
+    except Exception as e: logger.error(f"Error in /invitelink: {e}"); await update.message.reply_text("Failed. Do I have admin rights?")
 
 # --- Main Bot Logic ---
 
 def main() -> None:
+    """Start the bot."""
     load_user_commands()
     application = Application.builder().token(BOT_TOKEN).build()
 
@@ -236,16 +306,20 @@ def main() -> None:
         fallbacks=[CommandHandler("cancel", cancel)],
     )
     
+    # Add conversation handlers first
     application.add_handler(new_command_conv)
     application.add_handler(delete_all_conv)
 
-    for command, handler_func in {
+    # Add handlers for all premade commands
+    command_handlers = {
         "start": start_command, "commandlist": command_list_command, "userinfo": user_info_command,
         "removeuser": remove_user_command, "ban": ban_command, "unban": unban_command,
         "mute": mute_command, "unmute": unmute_command, "pin": pin_command, "invitelink": invitelink_command
-    }.items():
+    }
+    for command, handler_func in command_handlers.items():
         application.add_handler(CommandHandler(command, handler_func))
 
+    # Add the single, smart handler for all custom commands.
     application.add_handler(MessageHandler(filters.COMMAND & (~filters.UpdateType.EDITED), handle_custom_command), group=1)
 
     logger.info("Bot is starting...")
