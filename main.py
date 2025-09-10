@@ -32,7 +32,6 @@ if not BOT_TOKEN:
 COMMAND_FILE = "user_commands.json"
 user_commands = {}
 
-# Single source of truth for all built-in commands and their descriptions
 PREMADE_COMMANDS = {
     "start": "Shows this help message.",
     "new": "Create a new custom command.",
@@ -54,24 +53,26 @@ CONFIRM_DELETE = range(1)
 
 # --- Helper Functions ---
 
+def escape_markdown_v2(text: str) -> str:
+    """Escapes characters for Telegram's MarkdownV2 parse mode."""
+    escape_chars = r'_*[]()~`>#+-=|{}.!'
+    return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
+
 def load_user_commands():
     """Loads custom commands and cleans up any conflicts with premade commands."""
     global user_commands
     try:
         with open(COMMAND_FILE, "r") as f:
             data = json.load(f)
-            # Safety check: remove any user commands that conflict with premade ones
             original_count = len(data)
             user_commands = {k: v for k, v in data.items() if k not in PREMADE_COMMANDS}
             if len(user_commands) < original_count:
                 logger.warning("Removed conflicting custom commands from the loaded list.")
-                save_user_commands() # Save the cleaned list
+                save_user_commands()
         logger.info(f"Loaded {len(user_commands)} custom commands from {COMMAND_FILE}")
     except FileNotFoundError:
-        logger.info(f"{COMMAND_FILE} not found. Starting fresh.")
         user_commands = {}
     except json.JSONDecodeError:
-        logger.error(f"Error decoding {COMMAND_FILE}. Starting fresh.")
         user_commands = {}
 
 def save_user_commands():
@@ -106,13 +107,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def command_list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Displays a unified list of all commands."""
-    message = "**Built-in Commands**\n"
+    message = "*Built-in Commands*\n"
     for command, description in PREMADE_COMMANDS.items():
-        message += f"• `/{command}` - {description}\n"
+        escaped_desc = escape_markdown_v2(description)
+        message += f"• `/{command}` \- {escaped_desc}\n"
     
-    message += "\n**Your Custom Commands**\n"
+    message += "\n*Your Custom Commands*\n"
     if not user_commands:
-        message += "_You haven't created any custom commands yet. Use /new to create one!_"
+        message += "_You haven't created any custom commands yet\. Use /new to create one\!_"
     else:
         for command in sorted(user_commands.keys()):
             message += f"• `/{command}`\n"
@@ -122,12 +124,10 @@ async def command_list_command(update: Update, context: ContextTypes.DEFAULT_TYP
 # --- Custom Command Management ---
 
 async def new_command_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Starts the /new command conversation."""
     await update.message.reply_text("What is the command name? (e.g., 'hello' for /hello)")
     return COMMAND
 
 async def get_command_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Gets and validates the new command name."""
     command_name = re.sub(r'[\s-]+', '_', update.message.text.lower().strip().lstrip('/'))
     if not command_name.isalnum() and '_' not in command_name:
         await update.message.reply_text("Invalid name. Use letters, numbers, and underscores.")
@@ -143,7 +143,6 @@ async def get_command_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     return REPLY
 
 async def get_command_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Saves the new command and adds its handler."""
     command_name = context.user_data['new_command_name']
     reply_text = update.message.text
     user_commands[command_name] = reply_text
@@ -154,19 +153,16 @@ async def get_command_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Cancels any active conversation."""
     await update.message.reply_text("Operation canceled.")
     context.user_data.clear()
     return ConversationHandler.END
 
 async def generic_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handles all dynamically created user commands."""
     command = update.message.text[1:].split('@')[0]
     if command in user_commands:
         await update.message.reply_text(user_commands[command])
 
 async def delete_all_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Starts the process to delete all custom commands."""
     if not user_commands:
         await update.message.reply_text("There are no custom commands to delete.")
         return ConversationHandler.END
@@ -174,13 +170,9 @@ async def delete_all_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     return CONFIRM_DELETE
 
 async def delete_all_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Deletes all commands if confirmation is received."""
     if update.message.text.lower() == 'yes':
-        # Create a copy of keys to avoid issues while iterating
         commands_to_remove = list(user_commands.keys())
-        # The handlers are in a list at application.handlers[0]
         current_handlers = context.application.handlers[0]
-        # Filter out the handlers that match our custom commands
         context.application.handlers[0] = [
             h for h in current_handlers
             if not (isinstance(h, CommandHandler) and any(cmd in commands_to_remove for cmd in h.commands))
@@ -193,7 +185,6 @@ async def delete_all_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return ConversationHandler.END
 
 # --- User Management & Moderator Commands ---
-# Note: For these to work, the bot must be an admin in the chat.
 
 async def user_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args:
@@ -202,12 +193,18 @@ async def user_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     try:
         user_id = int(context.args[0])
         user = await context.bot.get_chat(user_id)
+        
+        # Escape potential markdown characters in user-provided names
+        first_name = escape_markdown_v2(user.first_name)
+        last_name = escape_markdown_v2(user.last_name or 'N/A')
+        username = escape_markdown_v2(user.username or 'N/A')
+
         message = (
-            f"User Info:\n"
+            f"*User Info*:\n"
             f"ID: `{user.id}`\n"
-            f"First Name: `{user.first_name}`\n"
-            f"Last Name: `{user.last_name or 'N/A'}`\n"
-            f"Username: `@{user.username or 'N/A'}`"
+            f"First Name: {first_name}\n"
+            f"Last Name: {last_name}\n"
+            f"Username: @{username}"
         )
         await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN_V2)
     except Exception:
@@ -310,7 +307,6 @@ def main() -> None:
     load_user_commands()
     application = Application.builder().token(BOT_TOKEN).build()
 
-    # --- Register Handlers ---
     new_command_conv = ConversationHandler(
         entry_points=[CommandHandler("new", new_command_start)],
         states={COMMAND: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_command_name)], REPLY: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_command_reply)]},
@@ -326,7 +322,6 @@ def main() -> None:
     application.add_handler(new_command_conv)
     application.add_handler(delete_all_conv)
 
-    # Register all premade command handlers dynamically
     command_handlers = {
         "start": start_command, "commandlist": command_list_command, "userinfo": user_info_command,
         "removeuser": remove_user_command, "ban": ban_command, "unban": unban_command,
@@ -335,7 +330,6 @@ def main() -> None:
     for command, handler_func in command_handlers.items():
         application.add_handler(CommandHandler(command, handler_func))
 
-    # Add handlers for all loaded custom commands
     for command in user_commands:
         application.add_handler(CommandHandler(command, generic_command_handler))
 
