@@ -1,6 +1,10 @@
 import json
+import os
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, MessageHandler, filters,
+    ContextTypes, ConversationHandler
+)
 
 # States for ConversationHandler
 WAITING_FOR_COMMAND, WAITING_FOR_RESPONSE = range(2)
@@ -31,7 +35,10 @@ async def receive_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         command_text = "/" + command_text
 
     context.user_data["new_command_name"] = command_text
-    await update.message.reply_text(f"Alright, the command {command_text} was saved. What would you like me to reply with when this command is used?")
+    await update.message.reply_text(
+        f"Alright, the command {command_text} was saved. "
+        "What would you like me to reply with when this command is used?"
+    )
     return WAITING_FOR_RESPONSE
 
 # Capture the response for the new command
@@ -45,8 +52,8 @@ async def receive_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
         json.dump(user_commands, f, indent=4)
 
     # Dynamically add handler for the new command
-    async def dynamic_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text(response_text)
+    async def dynamic_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, reply_text=response_text):
+        await update.message.reply_text(reply_text)
 
     context.application.add_handler(CommandHandler(command_name[1:], dynamic_reply))
     
@@ -65,8 +72,15 @@ def load_saved_commands(application):
             await update.message.reply_text(reply_text)
         application.add_handler(CommandHandler(cmd[1:], dynamic_reply))
 
-if __name__ == "__main__":
-    app = ApplicationBuilder().token("BOT_TOKEN").build()
+# Start bot
+def main():
+    # Get token from Railway environment variable
+    TOKEN = os.getenv("BOT_TOKEN")
+    if not TOKEN:
+        print("Error: BOT_TOKEN environment variable not set!")
+        return
+
+    app = ApplicationBuilder().token(TOKEN).build()
 
     # Conversation for /new
     conv_handler = ConversationHandler(
@@ -83,4 +97,8 @@ if __name__ == "__main__":
     # Load previously saved commands
     load_saved_commands(app)
 
+    print("Bot is running...")
     app.run_polling()
+
+if __name__ == "__main__":
+    main()
