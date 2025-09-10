@@ -41,7 +41,7 @@ gemini_model = genai.GenerativeModel('gemini-1.5-flash')
 COMMAND_FILE = "user_commands.json"
 
 # In-memory storage for AI chat history {chat_id: [history]}
-gemini_memory = {} 
+gemini_memory = {}
 # In-memory storage for custom commands {command_name: reply_text}
 user_commands = {}
 
@@ -93,13 +93,13 @@ async def split_and_send_message(update: Update, text: str, parse_mode: str = No
                 split_at = last_space
             else:
                 split_at = MAX_LENGTH
-            
+
             parts.append(text[:split_at])
             text = text[split_at:].lstrip()
         else:
             parts.append(text)
             break
-            
+
     for part in parts:
         try:
             await update.message.reply_text(part, parse_mode=parse_mode)
@@ -138,9 +138,9 @@ async def gemini_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     try:
         # Show a "thinking..." message
         thinking_message = await update.message.reply_text("🤔 Thinking...")
-        
+
         response = gemini_memory[chat_id].send_message(user_text)
-        
+
         # Edit the message to show the final response
         await context.bot.delete_message(chat_id=chat_id, message_id=thinking_message.message_id)
         await split_and_send_message(update, response.text, parse_mode=ParseMode.MARKDOWN)
@@ -169,7 +169,7 @@ async def new_command_start(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 async def get_command_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Gets the command name, sanitizes it, and asks for the reply."""
     command_name = update.message.text.lower().strip()
-    
+
     # Sanitize: remove leading '/' and replace spaces/hyphens with underscores
     command_name = re.sub(r'[\s-]+', '_', command_name)
     if command_name.startswith('/'):
@@ -178,7 +178,7 @@ async def get_command_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if not command_name.isalnum() and '_' not in command_name:
         await update.message.reply_text("Invalid command name. Please use only letters, numbers, and underscores. Let's try again.")
         return COMMAND
-    
+
     if command_name in user_commands:
         await update.message.reply_text("That command already exists. Please choose another name.")
         return COMMAND
@@ -198,9 +198,9 @@ async def get_command_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     # Dynamically add the new command handler to the running bot
     new_handler = CommandHandler(command_name, generic_command_handler)
     context.application.add_handler(new_handler)
-    
+
     await update.message.reply_text(f"✅ Success! The command /{command_name} has been created.")
-    
+
     context.user_data.clear()
     return ConversationHandler.END
 
@@ -215,11 +215,11 @@ async def command_list_command(update: Update, context: ContextTypes.DEFAULT_TYP
     if not user_commands:
         await update.message.reply_text("There are no custom commands saved yet. Use /new to create one!")
         return
-        
+
     message = "Here are the available custom commands:\n\n"
     for command in sorted(user_commands.keys()):
         message += f"/{command}\n"
-    
+
     await update.message.reply_text(message)
 
 async def generic_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -235,7 +235,7 @@ async def user_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     if not context.args:
         await update.message.reply_text("Please provide a user ID. Usage: /userinfo <user_id>")
         return
-        
+
     try:
         user_id = int(context.args[0])
         user = await context.bot.get_chat(user_id)
@@ -259,7 +259,7 @@ async def remove_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     # NOTE: Making this command public is risky in a group with multiple members.
     # The bot must have "Ban users" permission to execute this.
     chat_id = update.effective_chat.id
-    
+
     if not context.args:
         await update.message.reply_text("Please provide a user ID. Usage: /removeuser <user_id>")
         return
@@ -286,7 +286,7 @@ def main() -> None:
     application = Application.builder().token(BOT_TOKEN).build()
 
     # --- Register Handlers ---
-    
+
     # Conversation handler for the /new command
     new_command_handler = ConversationHandler(
         entry_points=[CommandHandler("new", new_command_start)],
@@ -297,7 +297,7 @@ def main() -> None:
         fallbacks=[CommandHandler("cancel", cancel_command)],
     )
     application.add_handler(new_command_handler)
-    
+
     # Standard command handlers
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("gemini", gemini_command))
